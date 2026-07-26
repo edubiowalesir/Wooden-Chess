@@ -23,6 +23,7 @@
     --danger:#c0453a;
     --panel:#2b1c10;
     --panel-2:#332312;
+    --sq:60px;
     font-size:16px;
   }
   *{box-sizing:border-box;}
@@ -99,7 +100,7 @@
   .setup-hint{color:#a6957a;font-size:.95rem;max-width:520px;}
 
   /* ---------- GAME SCREEN ---------- */
-  #gameScreen{flex:1;display:none;flex-direction:column;min-height:0;}
+  #gameScreen{flex:1;display:none;flex-direction:column;min-height:0;overflow:hidden;}
   #gameScreen.active{display:flex;}
 
   .player-bar{
@@ -140,7 +141,7 @@
   /* ---------- BOARD STAGE ---------- */
   .board-stage{
     flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:.6rem;min-height:0;padding:.6rem;position:relative;
+    gap:.6rem;min-height:0;min-width:0;padding:.6rem;position:relative;overflow:hidden;
   }
   #statusBanner{
     font-family:'Playfair Display',serif;font-weight:700;
@@ -153,29 +154,31 @@
       repeating-linear-gradient(90deg,var(--wood-darker) 0 3px, var(--wood-dark) 3px 7px),
       linear-gradient(160deg,var(--wood-edge),var(--wood-darker));
     border-radius:14px;
-    padding:1.4vmin;
+    padding:1.2vmin;
     box-shadow:0 18px 50px rgba(0,0,0,.55), inset 0 0 0 2px #000a, inset 0 0 30px rgba(0,0,0,.5);
     display:flex;flex-direction:column;align-items:center;gap:.4vmin;
+    min-height:0;min-width:0;
   }
-  .board-mid{display:flex;align-items:center;gap:.5vmin;}
+  .board-mid{display:flex;align-items:center;gap:.5vmin;min-height:0;min-width:0;}
   .rank-col{display:flex;flex-direction:column;}
   .rank-col span, .file-row span{
     display:flex;align-items:center;justify-content:center;
     font-family:'Inter',sans-serif;font-weight:700;color:var(--brass-bright);
     font-size:clamp(.7rem,1.1vmin,1rem);
   }
-  .rank-col span{height:calc(min(80vh,86vmin) / 8);width:1.4rem;}
+  .rank-col span{height:var(--sq);width:1.4rem;}
   .file-row{display:flex;padding-left:1.4rem;}
-  .file-row span{width:calc(min(80vh,86vmin) / 8);height:1.4rem;}
+  .file-row span{width:var(--sq);height:1.4rem;}
 
   #board{
-    width:min(80vh,86vmin);
-    height:min(80vh,86vmin);
+    width:calc(var(--sq) * 8);
+    height:calc(var(--sq) * 8);
     display:grid;
     grid-template-columns:repeat(8,1fr);
     grid-template-rows:repeat(8,1fr);
     border-radius:4px;overflow:hidden;
     box-shadow:0 0 0 4px var(--wood-darker), 0 0 0 6px var(--brass);
+    flex-shrink:0;
   }
   .sq{
     position:relative;display:flex;align-items:center;justify-content:center;
@@ -200,7 +203,7 @@
     box-shadow:inset 0 0 0 6px rgba(30,20,10,.42);
   }
   .piece{
-    font-size:clamp(2rem,7vmin,4.6rem);line-height:1;
+    font-size:calc(var(--sq) * 0.62);line-height:1;
     pointer-events:none;user-select:none;
     filter:drop-shadow(0 3px 2px rgba(0,0,0,.45));
   }
@@ -674,6 +677,9 @@ const els = {
   tcRow: document.getElementById('tcRow'),
   startBtn: document.getElementById('startBtn'),
   board: document.getElementById('board'),
+  boardStage: document.querySelector('.board-stage'),
+  boardFrame: document.querySelector('.board-frame'),
+  boardMid: document.querySelector('.board-mid'),
   filesTop: document.getElementById('filesTop'),
   filesBottom: document.getElementById('filesBottom'),
   ranksLeft: document.getElementById('ranksLeft'),
@@ -724,8 +730,46 @@ function startGame(minutes){
   els.gameScreen.classList.add('active');
   buildLabels();
   render();
+  requestAnimationFrame(()=> requestAnimationFrame(fitBoard));
   startClock();
 }
+
+/* --- Dynamic board sizing (guarantees the board + bars always fit the screen, never overflow) --- */
+function fitBoard(){
+  if(!state) return;
+  const stage = els.boardStage, frame = els.boardFrame;
+  const PROBE = 10;
+  document.documentElement.style.setProperty('--sq', PROBE + 'px');
+  void frame.offsetHeight; // force reflow at probe size
+
+  const stageBox = stage.getBoundingClientRect();
+  const frameBox = frame.getBoundingClientRect();
+  const csStage = getComputedStyle(stage);
+  const padH = parseFloat(csStage.paddingLeft) + parseFloat(csStage.paddingRight);
+  const padV = parseFloat(csStage.paddingTop) + parseFloat(csStage.paddingBottom);
+  const stageGap = parseFloat(csStage.rowGap || csStage.gap) || 0;
+  const bannerH = els.statusBanner.getBoundingClientRect().height;
+
+  const nonBoardH = frameBox.height - PROBE * 8;   // file-label rows + frame padding (fixed)
+  const nonBoardW = frameBox.width - PROBE * 8;    // rank column + gaps + frame padding (fixed)
+
+  const availFrameH = (stageBox.height - padV) - bannerH - stageGap;
+  const availFrameW = stageBox.width - padH;
+
+  const availBoardH = availFrameH - nonBoardH;
+  const availBoardW = availFrameW - nonBoardW;
+
+  let sq = Math.floor(Math.min(availBoardH, availBoardW) / 8);
+  sq = Math.max(28, Math.min(sq, 150));
+  document.documentElement.style.setProperty('--sq', sq + 'px');
+}
+
+let fitTimer = null;
+window.addEventListener('resize', ()=>{
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(fitBoard, 120);
+});
+window.addEventListener('orientationchange', ()=> setTimeout(fitBoard, 200));
 
 /* --- Labels (files/ranks) --- */
 function buildLabels(){
